@@ -1,0 +1,1720 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Café Corner — QR Food Ordering & Live Kitchen</title>
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Google Fonts: Playfair Display & Plus Jakarta Sans -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,600;0,700;0,800;1,600&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <!-- Tone.js for Kitchen Bell Notification Sound -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
+  <!-- QRCode.js for Table QR Generation -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            serif: ['"Playfair Display"', 'Georgia', 'serif'],
+            sans: ['"Plus Jakarta Sans"', 'system-ui', 'sans-serif'],
+          },
+          colors: {
+            cafe: {
+              cream: '#FDF8F0',
+              parchment: '#F5EBDC',
+              latte: '#EAD9C1',
+              espresso: '#2C1A11',
+              roast: '#4A2E1B',
+              amber: '#D97706',
+              gold: '#B45309',
+            }
+          }
+        }
+      }
+    }
+  </script>
+
+  <style>
+    /* Custom Scrollbar Hiding for Horizontal Pills */
+    .no-scrollbar::-webkit-scrollbar {
+      display: none;
+    }
+    .no-scrollbar {
+      -ms-overflow-style: none;
+      scrollbar-width: none;
+    }
+
+    /* Vintage Paper Subtle Texture */
+    body {
+      background-color: #FDF8F0;
+      color: #2C1A11;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    /* Smooth pulse animation for new kitchen alerts */
+    @keyframes pulseBorder {
+      0%, 100% { border-color: #D97706; box-shadow: 0 0 0 0 rgba(217, 119, 6, 0.4); }
+      50% { border-color: #F59E0B; box-shadow: 0 0 0 8px rgba(217, 119, 6, 0); }
+    }
+    .new-order-pulse {
+      animation: pulseBorder 2s infinite;
+    }
+  </style>
+</head>
+<body class="font-sans antialiased min-h-screen flex flex-col selection:bg-amber-200 selection:text-cafe-espresso">
+
+  <!-- Toast / Custom Notification Banner (Replaces alert()) -->
+  <div id="toast-container" class="fixed top-20 left-1/2 -translate-x-1/2 z-50 flex flex-col gap-2 w-11/12 max-w-md pointer-events-none"></div>
+
+  <!-- Top Sticky Header & Role Switcher -->
+  <header class="sticky top-0 z-40 bg-cafe-espresso text-cafe-cream shadow-lg border-b border-cafe-roast">
+    <div class="max-w-5xl mx-auto px-3 sm:px-6 py-2.5">
+      <div class="flex items-center justify-between gap-2">
+        <!-- Brand Logo -->
+        <div class="flex items-center gap-2.5">
+          <div class="w-10 h-10 rounded-full bg-cafe-cream text-cafe-espresso flex items-center justify-center shadow-inner border-2 border-amber-500 shrink-0">
+            <!-- Coffee Cup SVG -->
+            <svg class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+              <path d="M17 8h1a4 4 0 1 1 0 8h-1"></path>
+              <path d="M3 8h14v9a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4Z"></path>
+              <line x1="6" y1="2" x2="6" y2="4"></line>
+              <line x1="10" y1="2" x2="10" y2="4"></line>
+              <line x1="14" y1="2" x2="14" y2="4"></line>
+            </svg>
+          </div>
+          <div>
+            <div class="flex items-center gap-1.5">
+              <h1 class="font-serif font-bold text-lg sm:text-xl tracking-wide leading-none text-amber-100">CAFÉ Corner</h1>
+              <span id="sync-indicator" title="Live Cloud Sync" class="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+            </div>
+            <p class="text-[11px] text-amber-300/90 italic tracking-wider mt-0.5">Good Food, Good Mood • @THECAFECORNER_</p>
+          </div>
+        </div>
+
+        <!-- QR Code Modal Button -->
+        <button id="btn-open-qr" class="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-cafe-roast hover:bg-amber-800 text-amber-100 text-xs font-semibold border border-amber-700/50 transition active:scale-95">
+          <svg class="w-4 h-4 text-amber-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="3" y="3" width="7" height="7" rx="1"></rect>
+            <rect x="14" y="3" width="7" height="7" rx="1"></rect>
+            <rect x="3" y="14" width="7" height="7" rx="1"></rect>
+            <path d="M14 14h3v3h-3zM18 18h3v3h-3zM14 20h2v1h-2zM20 14h1v2h-1z"></path>
+          </svg>
+          <span class="hidden sm:inline">Table QR</span>
+          <span class="sm:hidden">QR</span>
+        </button>
+      </div>
+
+      <!-- View Switcher Tabs & Table Selector Bar -->
+      <div class="mt-2.5 pt-2 border-t border-cafe-roast/80 flex flex-wrap items-center justify-between gap-2">
+        <!-- Role Toggle -->
+        <div class="inline-flex rounded-xl bg-cafe-roast/90 p-1 w-full sm:w-auto">
+          <button id="tab-customer" class="flex-1 sm:flex-initial px-3.5 py-1.5 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 bg-amber-500 text-cafe-espresso shadow">
+            <span>🍽️ Customer Menu</span>
+          </button>
+          <button id="tab-kitchen" class="flex-1 sm:flex-initial px-3.5 py-1.5 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 text-amber-100 hover:text-white">
+            <span>👨‍🍳 Kitchen Live</span>
+            <span id="kitchen-badge" class="px-1.5 py-0.5 text-[10px] rounded-full bg-red-500 text-white font-extrabold hidden">0</span>
+          </button>
+        </div>
+
+        <!-- Table Selector (Visible in Customer Mode) -->
+        <div id="header-table-selector" class="flex items-center gap-2 w-full sm:w-auto justify-between sm:justify-end bg-cafe-roast/50 px-3 py-1 rounded-xl border border-amber-800/40">
+          <label for="table-select" class="text-xs text-amber-200 font-medium flex items-center gap-1">
+            <span>📍 Ordering for:</span>
+          </label>
+          <select id="table-select" class="bg-cafe-espresso text-amber-300 font-bold text-xs rounded-lg px-2.5 py-1 border border-amber-600/50 focus:outline-none focus:border-amber-400">
+            <option value="Table 1">Table 1</option>
+            <option value="Table 2">Table 2</option>
+            <option value="Table 3">Table 3</option>
+            <option value="Table 4">Table 4</option>
+            <option value="Table 5">Table 5</option>
+            <option value="Table 6">Table 6</option>
+            <option value="Table 7">Table 7</option>
+            <option value="Table 8">Table 8</option>
+            <option value="Table 9">Table 9</option>
+            <option value="Table 10">Table 10</option>
+            <option value="Takeaway">Takeaway Parcel</option>
+          </select>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- ===================================================================== -->
+  <!-- VIEW 1: CUSTOMER ORDERING VIEW                                        -->
+  <!-- ===================================================================== -->
+  <main id="view-customer" class="flex-1 max-w-5xl w-full mx-auto pb-28">
+    
+    <!-- Live Customer Order Status Tracker Banner (Shows when customer has placed orders) -->
+    <section id="customer-active-orders-section" class="hidden px-3 sm:px-6 pt-4">
+      <div class="bg-amber-50 border-2 border-amber-500/70 rounded-2xl p-3.5 shadow-sm">
+        <div class="flex items-center justify-between mb-2">
+          <h2 class="text-xs font-extrabold uppercase tracking-wider text-cafe-espresso flex items-center gap-1.5">
+            <span class="w-2 h-2 rounded-full bg-amber-600 animate-ping"></span>
+            Your Live Order Status
+          </h2>
+          <span class="text-[11px] text-cafe-roast font-medium">Updates automatically</span>
+        </div>
+        <div id="customer-orders-list" class="space-y-2.5"></div>
+      </div>
+    </section>
+
+    <!-- Sticky Search, Veg/Non-Veg Filter & Category Pills -->
+    <div class="sticky top-[102px] sm:top-[98px] z-30 bg-cafe-cream/95 backdrop-blur-md border-b border-cafe-latte px-3 sm:px-6 py-3 shadow-sm">
+      <!-- Search & Diet Filter Row -->
+      <div class="flex items-center gap-2 mb-2.5">
+        <div class="relative flex-1">
+          <svg class="w-4 h-4 text-cafe-roast/60 absolute left-3 top-1/2 -translate-y-1/2" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="11" cy="11" r="8"></circle>
+            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+          </svg>
+          <input id="menu-search" type="text" placeholder="Search fries, momos, chicken 65, mojito..." 
+            class="w-full pl-9 pr-8 py-2 rounded-xl bg-white border border-cafe-latte text-sm text-cafe-espresso placeholder-cafe-roast/50 focus:outline-none focus:border-amber-600 shadow-inner" />
+          <button id="clear-search" class="hidden absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-cafe-roast/60 hover:text-cafe-espresso p-1">✕</button>
+        </div>
+
+        <!-- Diet Filter Pills -->
+        <div class="inline-flex rounded-xl bg-cafe-parchment p-1 border border-cafe-latte shrink-0">
+          <button data-diet="all" class="diet-btn px-2.5 py-1.5 rounded-lg text-xs font-bold bg-cafe-espresso text-white transition">All</button>
+          <button data-diet="veg" class="diet-btn px-2.5 py-1.5 rounded-lg text-xs font-bold text-emerald-800 hover:bg-white/60 transition flex items-center gap-1">
+            <span class="w-2.5 h-2.5 border border-emerald-600 flex items-center justify-center p-[1px]"><span class="w-full h-full bg-emerald-600 rounded-full"></span></span>
+            <span>Veg</span>
+          </button>
+          <button data-diet="nonveg" class="diet-btn px-2.5 py-1.5 rounded-lg text-xs font-bold text-red-800 hover:bg-white/60 transition flex items-center gap-1">
+            <span class="w-2.5 h-2.5 border border-red-600 flex items-center justify-center p-[1px]"><span class="w-full h-full bg-red-600 rounded-full"></span></span>
+            <span>Non-Veg</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Horizontal Category Pills -->
+      <div id="category-pills" class="flex items-center gap-2 overflow-x-auto no-scrollbar pb-0.5">
+        <!-- Populated dynamically via JS -->
+      </div>
+    </div>
+
+    <!-- Menu Items Container -->
+    <div id="menu-container" class="px-3 sm:px-6 pt-4 space-y-6">
+      <!-- Populated dynamically via JS -->
+    </div>
+
+    <!-- Empty Search State -->
+    <div id="empty-search-state" class="hidden text-center py-16 px-4">
+      <div class="text-4xl mb-2">🍽️</div>
+      <h3 class="font-serif font-bold text-lg text-cafe-espresso">No dishes matched your filter</h3>
+      <p class="text-sm text-cafe-roast/70 mt-1">Try clearing your search or switching Veg/Non-Veg filters.</p>
+      <button id="btn-reset-filters" class="mt-4 px-4 py-2 rounded-xl bg-cafe-espresso text-cafe-cream text-xs font-bold">Reset Filters</button>
+    </div>
+  </main>
+
+  <!-- ===================================================================== -->
+  <!-- VIEW 2: RESTAURANT / KITCHEN LIVE ORDERS VIEW                         -->
+  <!-- ===================================================================== -->
+  <main id="view-kitchen" class="hidden flex-1 max-w-5xl w-full mx-auto px-3 sm:px-6 py-4 pb-16">
+    <!-- Kitchen Control Header -->
+    <div class="bg-white rounded-2xl p-4 border border-cafe-latte shadow-sm mb-4">
+      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div>
+          <div class="flex items-center gap-2">
+            <h2 class="font-serif font-bold text-xl text-cafe-espresso">Kitchen Live Order Board</h2>
+            <span class="px-2 py-0.5 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">● Live Sync</span>
+          </div>
+          <p class="text-xs text-cafe-roast/80 mt-0.5">Orders placed on customer devices appear here instantly.</p>
+        </div>
+
+        <div class="flex items-center gap-2">
+          <!-- Sound Toggle Button -->
+          <button id="btn-toggle-sound" class="px-3 py-2 rounded-xl bg-amber-100 text-amber-900 border border-amber-300 text-xs font-bold flex items-center gap-1.5 hover:bg-amber-200 transition">
+            <span id="sound-icon">🔔</span>
+            <span id="sound-label">Alert Sound: ON</span>
+          </button>
+          <button id="btn-test-bell" class="px-3 py-2 rounded-xl bg-cafe-parchment text-cafe-espresso border border-cafe-latte text-xs font-semibold hover:bg-cafe-latte transition" title="Test Notification Sound">
+            Test Bell
+          </button>
+        </div>
+      </div>
+
+      <!-- Kitchen Filter Tabs & Quick Stats -->
+      <div class="mt-4 pt-3 border-t border-cafe-parchment flex flex-wrap items-center justify-between gap-3">
+        <div class="inline-flex rounded-xl bg-cafe-parchment p-1">
+          <button id="kitchen-filter-active" class="px-4 py-1.5 rounded-lg text-xs font-bold bg-cafe-espresso text-white shadow transition">
+            Active Orders (<span id="count-active">0</span>)
+          </button>
+          <button id="kitchen-filter-completed" class="px-4 py-1.5 rounded-lg text-xs font-bold text-cafe-roast hover:text-cafe-espresso transition">
+            Completed (<span id="count-completed">0</span>)
+          </button>
+        </div>
+
+        <div class="flex items-center gap-4 text-xs">
+          <div class="bg-amber-50 px-3 py-1.5 rounded-xl border border-amber-200">
+            <span class="text-cafe-roast">Today's Orders:</span>
+            <strong id="stat-total-orders" class="text-cafe-espresso ml-1">0</strong>
+          </div>
+          <div class="bg-emerald-50 px-3 py-1.5 rounded-xl border border-emerald-200">
+            <span class="text-emerald-800">Revenue:</span>
+            <strong id="stat-total-revenue" class="text-emerald-950 ml-1">₹0</strong>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Orders Grid -->
+    <div id="kitchen-orders-grid" class="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <!-- Live Kitchen Order Cards injected here -->
+    </div>
+
+    <!-- Empty Kitchen State -->
+    <div id="kitchen-empty-state" class="text-center py-16 bg-white/70 rounded-2xl border border-dashed border-cafe-latte">
+      <div class="text-4xl mb-2">👨‍🍳</div>
+      <h3 class="font-serif font-bold text-lg text-cafe-espresso">No orders in this tab yet</h3>
+      <p class="text-xs text-cafe-roast/75 max-w-sm mx-auto mt-1">
+        Switch to <strong>Customer Menu</strong> on this or another mobile device and place an order to see it pop up here in real time!
+      </p>
+    </div>
+  </main>
+
+  <!-- ===================================================================== -->
+  <!-- FLOATING CART BAR (CUSTOMER VIEW)                                     -->
+  <!-- ===================================================================== -->
+  <div id="floating-cart-bar" class="hidden fixed bottom-3 left-1/2 -translate-x-1/2 z-40 w-[94%] max-w-xl">
+    <button id="btn-open-cart" class="w-full bg-cafe-espresso hover:bg-cafe-roast text-cafe-cream rounded-2xl px-4 py-3.5 shadow-2xl border border-amber-500/40 flex items-center justify-between transition transform active:scale-[0.99]">
+      <div class="flex items-center gap-3">
+        <div class="bg-amber-500 text-cafe-espresso font-extrabold text-xs px-2.5 py-1 rounded-xl" id="cart-bar-count">
+          0 ITEMS
+        </div>
+        <div class="text-left">
+          <div class="text-xs text-amber-200/90" id="cart-bar-table">Table 1</div>
+          <div class="font-bold text-base text-white leading-tight" id="cart-bar-total">₹0</div>
+        </div>
+      </div>
+      <div class="flex items-center gap-1.5 font-bold text-sm text-amber-400">
+        <span>View Cart & Order</span>
+        <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+          <polyline points="9 18 15 12 9 6"></polyline>
+        </svg>
+      </div>
+    </button>
+  </div>
+
+  <!-- ===================================================================== -->
+  <!-- CART & CHECKOUT DRAWER MODAL                                          -->
+  <!-- ===================================================================== -->
+  <div id="cart-modal" class="hidden fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-end sm:items-center justify-center p-0 sm:p-4">
+    <div class="bg-cafe-cream w-full max-w-lg rounded-t-3xl sm:rounded-3xl max-h-[92vh] flex flex-col shadow-2xl border border-cafe-latte overflow-hidden">
+      <!-- Drawer Header -->
+      <div class="px-5 py-4 bg-cafe-espresso text-cafe-cream flex items-center justify-between">
+        <div>
+          <h3 class="font-serif font-bold text-lg text-amber-100">Your Order Cart</h3>
+          <p class="text-xs text-amber-300/80">Review items & send directly to kitchen</p>
+        </div>
+        <button id="btn-close-cart" class="w-8 h-8 rounded-full bg-cafe-roast text-amber-100 flex items-center justify-center hover:bg-amber-700 transition">✕</button>
+      </div>
+
+      <!-- Drawer Body (Scrollable) -->
+      <div class="p-4 sm:p-5 overflow-y-auto flex-1 space-y-4">
+        <!-- Cart Items List -->
+        <div id="cart-items-list" class="space-y-3">
+          <!-- Cart items injected here -->
+        </div>
+
+        <!-- Order Details Form -->
+        <div class="bg-white rounded-2xl p-4 border border-cafe-latte space-y-3">
+          <h4 class="text-xs font-extrabold uppercase tracking-wider text-cafe-roast">Order Details</h4>
+          
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label class="block text-xs font-semibold text-cafe-espresso mb-1">Table / Dining Type *</label>
+              <select id="checkout-table" class="w-full rounded-xl bg-cafe-cream border border-cafe-latte px-3 py-2 text-sm font-bold text-cafe-espresso focus:outline-none focus:border-amber-600">
+                <option value="Table 1">Table 1</option>
+                <option value="Table 2">Table 2</option>
+                <option value="Table 3">Table 3</option>
+                <option value="Table 4">Table 4</option>
+                <option value="Table 5">Table 5</option>
+                <option value="Table 6">Table 6</option>
+                <option value="Table 7">Table 7</option>
+                <option value="Table 8">Table 8</option>
+                <option value="Table 9">Table 9</option>
+                <option value="Table 10">Table 10</option>
+                <option value="Takeaway">Takeaway Parcel</option>
+              </select>
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-cafe-espresso mb-1">Your Name (Optional)</label>
+              <input id="checkout-name" type="text" placeholder="e.g. Rahul" class="w-full rounded-xl bg-cafe-cream border border-cafe-latte px-3 py-2 text-sm text-cafe-espresso focus:outline-none focus:border-amber-600" />
+            </div>
+          </div>
+
+          <div>
+            <label class="block text-xs font-semibold text-cafe-espresso mb-1">Cooking Instructions (Optional)</label>
+            <input id="checkout-notes" type="text" placeholder="e.g. Less spicy, extra mayo, serve hot..." class="w-full rounded-xl bg-cafe-cream border border-cafe-latte px-3 py-2 text-sm text-cafe-espresso focus:outline-none focus:border-amber-600" />
+          </div>
+        </div>
+
+        <!-- Bill Summary -->
+        <div class="bg-cafe-parchment/70 rounded-2xl p-4 border border-cafe-latte space-y-1.5 text-sm">
+          <div class="flex justify-between text-cafe-roast">
+            <span>Item Total</span>
+            <span id="bill-subtotal" class="font-semibold">₹0</span>
+          </div>
+          <div class="flex justify-between text-cafe-roast text-xs">
+            <span>Taxes & Packaging</span>
+            <span class="text-emerald-700 font-semibold">Included</span>
+          </div>
+          <div class="pt-2 border-t border-cafe-latte flex justify-between items-center text-base font-extrabold text-cafe-espresso">
+            <span>Grand Total</span>
+            <span id="bill-grand-total" class="text-lg text-amber-800">₹0</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Drawer Footer -->
+      <div class="p-4 bg-white border-t border-cafe-latte flex items-center gap-3">
+        <button id="btn-clear-cart" class="px-3.5 py-3 rounded-xl border border-red-200 text-red-700 text-xs font-bold hover:bg-red-50 transition">
+          Clear
+        </button>
+        <button id="btn-place-order" class="flex-1 py-3.5 px-5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-extrabold text-sm shadow-lg flex items-center justify-center gap-2 transition active:scale-[0.99]">
+          <span>Place Order to Kitchen</span>
+          <span id="btn-place-order-total">₹0</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================================================================== -->
+  <!-- ITEM VARIANT & ADD-ON SELECTION MODAL                                 -->
+  <!-- ===================================================================== -->
+  <div id="variant-modal" class="hidden fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-end sm:items-center justify-center p-0 sm:p-4">
+    <div class="bg-cafe-cream w-full max-w-md rounded-t-3xl sm:rounded-3xl shadow-2xl border border-cafe-latte overflow-hidden">
+      <div class="px-5 py-4 bg-cafe-parchment border-b border-cafe-latte flex items-start justify-between">
+        <div>
+          <div class="flex items-center gap-2">
+            <span id="vm-diet-badge"></span>
+            <span id="vm-category" class="text-[11px] font-bold uppercase tracking-wider text-amber-800">Category</span>
+          </div>
+          <h3 id="vm-title" class="font-serif font-bold text-xl text-cafe-espresso mt-0.5">Item Name</h3>
+        </div>
+        <button id="btn-close-vm" class="w-8 h-8 rounded-full bg-white text-cafe-espresso flex items-center justify-center shadow-xs">✕</button>
+      </div>
+
+      <div class="p-5 space-y-4">
+        <!-- Portion / Size Selection -->
+        <div>
+          <label class="block text-xs font-extrabold uppercase tracking-wider text-cafe-roast mb-2">Select Portion / Size</label>
+          <div id="vm-variants-list" class="grid grid-cols-1 gap-2">
+            <!-- Radio options injected here -->
+          </div>
+        </div>
+
+        <!-- Optional Extra Cheese Add-on -->
+        <div id="vm-addon-section" class="hidden pt-2 border-t border-cafe-latte">
+          <label class="block text-xs font-extrabold uppercase tracking-wider text-cafe-roast mb-2">Optional Add-on</label>
+          <label class="flex items-center justify-between p-3 rounded-xl bg-white border border-cafe-latte cursor-pointer hover:border-amber-500 transition">
+            <div class="flex items-center gap-2.5">
+              <input id="vm-extra-cheese" type="checkbox" class="w-4 h-4 accent-amber-600 rounded" />
+              <span class="text-sm font-bold text-cafe-espresso">🧀 Extra Cheese</span>
+            </div>
+            <span class="text-sm font-extrabold text-amber-800">+ ₹29</span>
+          </label>
+        </div>
+
+        <!-- Quantity & Add Button -->
+        <div class="pt-3 border-t border-cafe-latte flex items-center gap-3">
+          <div class="flex items-center bg-white border border-cafe-latte rounded-xl px-2 py-1.5">
+            <button id="vm-qty-minus" class="w-8 h-8 rounded-lg bg-cafe-parchment font-bold text-cafe-espresso hover:bg-cafe-latte">−</button>
+            <span id="vm-qty-val" class="w-8 text-center font-extrabold text-sm">1</span>
+            <button id="vm-qty-plus" class="w-8 h-8 rounded-lg bg-cafe-parchment font-bold text-cafe-espresso hover:bg-cafe-latte">+</button>
+          </div>
+          <button id="btn-vm-confirm" class="flex-1 py-3 px-4 rounded-xl bg-cafe-espresso hover:bg-cafe-roast text-amber-300 font-extrabold text-sm shadow-md transition">
+            Add to Cart • ₹0
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================================================================== -->
+  <!-- TABLE QR CODE GENERATOR MODAL                                         -->
+  <!-- ===================================================================== -->
+  <div id="qr-modal" class="hidden fixed inset-0 z-50 bg-black/65 backdrop-blur-xs flex items-center justify-center p-4">
+    <div class="bg-cafe-cream w-full max-w-sm rounded-3xl shadow-2xl border-2 border-amber-500/50 overflow-hidden text-center">
+      <div class="bg-cafe-espresso text-cafe-cream px-5 py-4 flex items-center justify-between">
+        <div class="text-left">
+          <h3 class="font-serif font-bold text-lg text-amber-100">Table QR Code</h3>
+          <p class="text-[11px] text-amber-300/80">Scan on mobile to order directly</p>
+        </div>
+        <button id="btn-close-qr" class="w-8 h-8 rounded-full bg-cafe-roast text-amber-100 flex items-center justify-center">✕</button>
+      </div>
+
+      <div class="p-6 space-y-4">
+        <div>
+          <label class="block text-xs font-bold text-cafe-roast mb-1">Select Table for QR</label>
+          <select id="qr-table-select" class="w-full rounded-xl bg-white border border-cafe-latte px-3 py-2 text-sm font-bold text-cafe-espresso">
+            <option value="Table 1">Table 1</option>
+            <option value="Table 2">Table 2</option>
+            <option value="Table 3">Table 3</option>
+            <option value="Table 4">Table 4</option>
+            <option value="Table 5">Table 5</option>
+            <option value="Table 6">Table 6</option>
+            <option value="Table 7">Table 7</option>
+            <option value="Table 8">Table 8</option>
+            <option value="Table 9">Table 9</option>
+            <option value="Table 10">Table 10</option>
+            <option value="Takeaway">Takeaway Counter</option>
+          </select>
+        </div>
+
+        <!-- QR Code Canvas Render Box -->
+        <div class="bg-white p-4 rounded-2xl border-2 border-dashed border-amber-400 inline-flex flex-col items-center justify-center shadow-inner mx-auto">
+          <div id="qrcode-box" class="flex items-center justify-center"></div>
+          <span id="qr-table-badge" class="mt-2 px-3 py-0.5 rounded-full bg-cafe-espresso text-amber-300 text-xs font-extrabold">TABLE 1</span>
+        </div>
+
+        <p class="text-xs text-cafe-roast/80 leading-relaxed">
+          Open this same app link on a second phone and tap <strong>Kitchen Live</strong> in the header to receive orders live!
+        </p>
+
+        <button id="btn-copy-link" class="w-full py-2.5 px-4 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold shadow transition">
+          📋 Copy Table Ordering Link
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================================================================== -->
+  <!-- APPLICATION LOGIC & FIREBASE REAL-TIME SYNC                           -->
+  <!-- ===================================================================== -->
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+    import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+    import { getFirestore, collection, doc, addDoc, updateDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+    // =========================================================================
+    // 1. COMPLETE CAFÉ CORNER MENU DATA (EXACT FROM UPLOADED 2-PAGE IMAGES)
+    // =========================================================================
+    const MENU_CATEGORIES = [
+      { id: 'all', name: 'All Items', icon: '✨' },
+      { id: 'fries', name: 'French Fries', icon: '🍟' },
+      { id: 'loaded', name: 'Loaded Fries', icon: '🧀' },
+      { id: 'cheese_shots', name: 'Cheese Shots', icon: '🟡' },
+      { id: 'nuggets', name: 'Nuggets', icon: '🍗' },
+      { id: 'boneless', name: 'Boneless', icon: '🍖' },
+      { id: 'fried_chicken', name: 'Fried Chicken', icon: '🍗' },
+      { id: 'momos_steam', name: 'Momos Steam', icon: '🥟' },
+      { id: 'momos_fried', name: 'Momos Fried', icon: '🥟' },
+      { id: 'pizzas', name: 'Pizzas', icon: '🍕' },
+      { id: 'burgers', name: 'Burgers', icon: '🍔' },
+      { id: 'rolls', name: 'Rolls', icon: '🌯' },
+      { id: 'sandwich', name: 'Sandwich', icon: '🥪' },
+      { id: 'combos', name: 'Combo Offers', icon: '🎁' },
+      { id: 'nonveg_starters', name: 'Non-Veg Starters', icon: '🔥' },
+      { id: 'veg_starters', name: 'Veg Starters', icon: '🌶️' },
+      { id: 'rice_noodles', name: 'Rice & Noodles', icon: '🍜' },
+      { id: 'gobi', name: 'Gobi', icon: '🥦' },
+      { id: 'hot_bev', name: 'Hot Beverages', icon: '☕' },
+      { id: 'cold_bev', name: 'Cold Beverages', icon: '🧊' },
+      { id: 'juices', name: 'Fresh Juices', icon: '🍹' },
+      { id: 'mojitos', name: 'Mojitos', icon: '🍋' },
+      { id: 'milkshakes', name: 'Milkshakes', icon: '🥤' },
+      { id: 'ice_cream', name: 'Ice Cream', icon: '🍨' }
+    ];
+
+    const MENU_ITEMS = [
+      // --- PAGE 1 ---
+      // French Fries
+      { id: 'ff1', category: 'fries', name: 'Salted Fries', veg: true, variants: [{ label: 'Small (S)', price: 59 }, { label: 'Large (L)', price: 99 }] },
+      { id: 'ff2', category: 'fries', name: 'Peri Peri Fries', veg: true, variants: [{ label: 'Small (S)', price: 69 }, { label: 'Large (L)', price: 119 }] },
+
+      // Loaded
+      { id: 'ld1', category: 'loaded', name: 'Crispy Chicken Loaded Fries', veg: false, variants: [{ label: 'Regular', price: 199 }] },
+      { id: 'ld2', category: 'loaded', name: 'Tandoori Chicken Loaded Fries', veg: false, variants: [{ label: 'Regular', price: 199 }] },
+
+      // Cheese Shots
+      { id: 'cs1', category: 'cheese_shots', name: 'Potato Cheese Shots', veg: true, variants: [{ label: '5 pcs', price: 69 }, { label: '10 pcs', price: 119 }] },
+      { id: 'cs2', category: 'cheese_shots', name: 'Chicken Cheese Shots', veg: false, variants: [{ label: '5 pcs', price: 79 }, { label: '10 pcs', price: 139 }] },
+
+      // Nuggets
+      { id: 'ng1', category: 'nuggets', name: 'Chicken Nuggets', veg: false, variants: [{ label: '3 pcs', price: 59 }, { label: '6 pcs', price: 89 }, { label: '9 pcs', price: 119 }] },
+      { id: 'ng2', category: 'nuggets', name: 'Veg Nuggets', veg: true, variants: [{ label: '3 pcs', price: 49 }, { label: '6 pcs', price: 79 }, { label: '9 pcs', price: 109 }] },
+
+      // Boneless
+      { id: 'bn1', category: 'boneless', name: 'Chicken Popcorn', veg: false, variants: [{ label: 'Small (S)', price: 99 }, { label: 'Large (L)', price: 149 }] },
+      { id: 'bn2', category: 'boneless', name: 'Chicken Strips', veg: false, variants: [{ label: 'Small (S)', price: 79 }, { label: 'Large (L)', price: 159 }] },
+
+      // Fried Chicken
+      { id: 'fc1', category: 'fried_chicken', name: 'Leg Pieces', veg: false, variants: [{ label: '2 pcs', price: 119 }] },
+      { id: 'fc2', category: 'fried_chicken', name: 'Wings', veg: false, variants: [{ label: '2 pcs', price: 99 }] },
+
+      // Momos Steam
+      { id: 'ms1', category: 'momos_steam', name: 'Veg Momos (Steam)', veg: true, variants: [{ label: '3 pcs', price: 49 }, { label: '6 pcs', price: 79 }, { label: '9 pcs', price: 109 }] },
+      { id: 'ms2', category: 'momos_steam', name: 'Corn Momos (Steam)', veg: true, variants: [{ label: '3 pcs', price: 49 }, { label: '6 pcs', price: 79 }, { label: '9 pcs', price: 109 }] },
+      { id: 'ms3', category: 'momos_steam', name: 'Paneer Momos (Steam)', veg: true, variants: [{ label: '3 pcs', price: 59 }, { label: '6 pcs', price: 89 }, { label: '9 pcs', price: 119 }] },
+      { id: 'ms4', category: 'momos_steam', name: 'Chicken Momos (Steam)', veg: false, variants: [{ label: '3 pcs', price: 59 }, { label: '6 pcs', price: 89 }, { label: '9 pcs', price: 119 }] },
+
+      // Momos Fried
+      { id: 'mf1', category: 'momos_fried', name: 'Veg Momos (Fried)', veg: true, variants: [{ label: '3 pcs', price: 59 }, { label: '6 pcs', price: 89 }, { label: '9 pcs', price: 119 }] },
+      { id: 'mf2', category: 'momos_fried', name: 'Corn Momos (Fried)', veg: true, variants: [{ label: '3 pcs', price: 59 }, { label: '6 pcs', price: 89 }, { label: '9 pcs', price: 119 }] },
+      { id: 'mf3', category: 'momos_fried', name: 'Paneer Momos (Fried)', veg: true, variants: [{ label: '3 pcs', price: 69 }, { label: '6 pcs', price: 99 }, { label: '9 pcs', price: 129 }] },
+      { id: 'mf4', category: 'momos_fried', name: 'Chicken Momos (Fried)', veg: false, variants: [{ label: '3 pcs', price: 59 }, { label: '6 pcs', price: 99 }, { label: '9 pcs', price: 129 }] },
+
+      // Pizzas (Extra Cheese +₹29)
+      { id: 'pz1', category: 'pizzas', name: 'Veg Pizza', veg: true, allowExtraCheese: true, variants: [{ label: 'Small (S)', price: 149 }, { label: 'Large (L)', price: 199 }] },
+      { id: 'pz2', category: 'pizzas', name: 'Sweet Corn Pizza', veg: true, allowExtraCheese: true, variants: [{ label: 'Small (S)', price: 149 }, { label: 'Large (L)', price: 199 }] },
+      { id: 'pz3', category: 'pizzas', name: 'Baby Corn Pizza', veg: true, allowExtraCheese: true, variants: [{ label: 'Small (S)', price: 149 }, { label: 'Large (L)', price: 199 }] },
+      { id: 'pz4', category: 'pizzas', name: 'Paneer Pizza', veg: true, allowExtraCheese: true, variants: [{ label: 'Small (S)', price: 179 }, { label: 'Large (L)', price: 229 }] },
+      { id: 'pz5', category: 'pizzas', name: 'Cheesy Pizza', veg: true, allowExtraCheese: true, variants: [{ label: 'Small (S)', price: 179 }, { label: 'Large (L)', price: 229 }] },
+      { id: 'pz6', category: 'pizzas', name: 'Chicken Crispy Pizza', veg: false, allowExtraCheese: true, variants: [{ label: 'Small (S)', price: 179 }, { label: 'Large (L)', price: 229 }] },
+      { id: 'pz7', category: 'pizzas', name: 'Chicken Peri Peri Pizza', veg: false, allowExtraCheese: true, variants: [{ label: 'Small (S)', price: 179 }, { label: 'Large (L)', price: 229 }] },
+
+      // Burgers (Extra Cheese +₹29)
+      { id: 'bg1', category: 'burgers', name: 'Veg Patty Burger', veg: true, allowExtraCheese: true, variants: [{ label: 'Regular', price: 79 }] },
+      { id: 'bg2', category: 'burgers', name: 'Chicken Patty Burger', veg: false, allowExtraCheese: true, variants: [{ label: 'Regular', price: 89 }] },
+      { id: 'bg3', category: 'burgers', name: 'Crispy Chicken Burger', veg: false, allowExtraCheese: true, variants: [{ label: 'Regular', price: 119 }] },
+      { id: 'bg4', category: 'burgers', name: 'Double Chicken Patty Burger', veg: false, allowExtraCheese: true, variants: [{ label: 'Regular', price: 159 }] },
+
+      // Rolls
+      { id: 'rl1', category: 'rolls', name: 'Chicken Shawarma Roll', veg: false, variants: [{ label: 'Regular', price: 99 }] },
+      { id: 'rl2', category: 'rolls', name: 'Special Chicken Shawarma Roll', veg: false, variants: [{ label: 'Regular', price: 129 }] },
+      { id: 'rl3', category: 'rolls', name: 'Chicken Crispy Roll', veg: false, variants: [{ label: 'Regular', price: 99 }] },
+
+      // Sandwich (Extra Cheese +₹29)
+      { id: 'sw1', category: 'sandwich', name: 'Veg Sandwich', veg: true, allowExtraCheese: true, variants: [{ label: 'Regular', price: 79 }] },
+      { id: 'sw2', category: 'sandwich', name: 'Paneer Sandwich', veg: true, allowExtraCheese: true, variants: [{ label: 'Regular', price: 99 }] },
+      { id: 'sw3', category: 'sandwich', name: 'Chicken Sandwich', veg: false, allowExtraCheese: true, variants: [{ label: 'Regular', price: 119 }] },
+
+      // Combo Offers
+      { id: 'cb1', category: 'combos', name: 'Chicken Burger + Fries + Mint', veg: false, desc: 'Value Meal Combo', variants: [{ label: 'Combo', price: 209 }] },
+      { id: 'cb2', category: 'combos', name: 'Chicken Pizza + Fries + Mint', veg: false, desc: 'Value Meal Combo', variants: [{ label: 'Combo', price: 209 }] },
+      { id: 'cb3', category: 'combos', name: 'Chicken Sandwich + Fries + Mint', veg: false, desc: 'Value Meal Combo', variants: [{ label: 'Combo', price: 209 }] },
+
+      // --- PAGE 2 ---
+      // Non-Veg Starters
+      { id: 'nvs1', category: 'nonveg_starters', name: 'Chicken 65', veg: false, variants: [{ label: 'Half', price: 129 }, { label: 'Full', price: 189 }] },
+      { id: 'nvs2', category: 'nonveg_starters', name: 'Chicken Manchurian', veg: false, variants: [{ label: 'Half', price: 139 }, { label: 'Full', price: 199 }] },
+      { id: 'nvs3', category: 'nonveg_starters', name: 'Chicken Chilly', veg: false, variants: [{ label: 'Half', price: 139 }, { label: 'Full', price: 199 }] },
+      { id: 'nvs4', category: 'nonveg_starters', name: 'Chicken Lollypop', veg: false, variants: [{ label: 'Half', price: 129 }, { label: 'Full', price: 229 }] },
+      { id: 'nvs5', category: 'nonveg_starters', name: 'Pepper Chicken', veg: false, variants: [{ label: 'Half', price: 149 }, { label: 'Full', price: 219 }] },
+      { id: 'nvs6', category: 'nonveg_starters', name: 'Chicken 555 / Chicken Special', veg: false, variants: [{ label: 'Half', price: 149 }, { label: 'Full', price: 219 }] },
+      { id: 'nvs7', category: 'nonveg_starters', name: 'Dragon Chicken', veg: false, variants: [{ label: 'Half', price: 159 }, { label: 'Full', price: 229 }] },
+      { id: 'nvs8', category: 'nonveg_starters', name: 'Chicken Majestic', veg: false, variants: [{ label: 'Half', price: 149 }, { label: 'Full', price: 219 }] },
+      { id: 'nvs9', category: 'nonveg_starters', name: 'Lemon Chicken', veg: false, variants: [{ label: 'Half', price: 149 }, { label: 'Full', price: 219 }] },
+      { id: 'nvs10', category: 'nonveg_starters', name: 'Crispy Chicken', veg: false, variants: [{ label: 'Half', price: 139 }, { label: 'Full', price: 199 }] },
+      { id: 'nvs11', category: 'nonveg_starters', name: 'Honey Chicken', veg: false, variants: [{ label: 'Half', price: 159 }, { label: 'Full', price: 229 }] },
+
+      // Veg Starters
+      { id: 'vs1', category: 'veg_starters', name: 'Paneer 65 / Paneer Special', veg: true, variants: [{ label: 'Half', price: 129 }, { label: 'Full', price: 189 }] },
+      { id: 'vs2', category: 'veg_starters', name: 'Paneer Manchurian', veg: true, variants: [{ label: 'Half', price: 139 }, { label: 'Full', price: 199 }] },
+      { id: 'vs3', category: 'veg_starters', name: 'Paneer Chilly', veg: true, variants: [{ label: 'Half', price: 139 }, { label: 'Full', price: 199 }] },
+      { id: 'vs4', category: 'veg_starters', name: 'Baby Corn 65 / Baby Corn Special', veg: true, variants: [{ label: 'Half', price: 119 }, { label: 'Full', price: 179 }] },
+      { id: 'vs5', category: 'veg_starters', name: 'Baby Corn Chilly', veg: true, variants: [{ label: 'Half', price: 129 }, { label: 'Full', price: 189 }] },
+      { id: 'vs6', category: 'veg_starters', name: 'Baby Corn Manchurian', veg: true, variants: [{ label: 'Half', price: 129 }, { label: 'Full', price: 189 }] },
+
+      // Rice & Noodles
+      { id: 'rn1', category: 'rice_noodles', name: 'Veg Fried Rice', veg: true, variants: [{ label: 'Half', price: 59 }, { label: 'Full', price: 109 }] },
+      { id: 'rn2', category: 'rice_noodles', name: 'Egg Fried Rice', veg: false, variants: [{ label: 'Half', price: 69 }, { label: 'Full', price: 119 }] },
+      { id: 'rn3', category: 'rice_noodles', name: 'Gobi Fried Rice', veg: true, variants: [{ label: 'Half', price: 69 }, { label: 'Full', price: 119 }] },
+      { id: 'rn4', category: 'rice_noodles', name: 'Zeera Rice', veg: true, variants: [{ label: 'Half', price: 79 }, { label: 'Full', price: 129 }] },
+      { id: 'rn5', category: 'rice_noodles', name: 'Chicken Fried Rice', veg: false, variants: [{ label: 'Half', price: 79 }, { label: 'Full', price: 129 }] },
+      { id: 'rn6', category: 'rice_noodles', name: 'Schezwan Fried Rice', veg: true, variants: [{ label: 'Half', price: 99 }, { label: 'Full', price: 149 }] },
+      { id: 'rn7', category: 'rice_noodles', name: 'Veg Noodles', veg: true, variants: [{ label: 'Half', price: 59 }, { label: 'Full', price: 109 }] },
+      { id: 'rn8', category: 'rice_noodles', name: 'Egg Noodles', veg: false, variants: [{ label: 'Half', price: 69 }, { label: 'Full', price: 119 }] },
+      { id: 'rn9', category: 'rice_noodles', name: 'Gobi Noodles', veg: true, variants: [{ label: 'Half', price: 69 }, { label: 'Full', price: 119 }] },
+      { id: 'rn10', category: 'rice_noodles', name: 'Chicken Noodles', veg: false, variants: [{ label: 'Half', price: 79 }, { label: 'Full', price: 129 }] },
+      { id: 'rn11', category: 'rice_noodles', name: 'Schezwan Noodles', veg: true, variants: [{ label: 'Half', price: 99 }, { label: 'Full', price: 149 }] },
+
+      // Gobi
+      { id: 'gb1', category: 'gobi', name: 'Gobi Manchurian', veg: true, variants: [{ label: 'Half', price: 49 }, { label: 'Full', price: 89 }] },
+      { id: 'gb2', category: 'gobi', name: 'Gobi Chilly', veg: true, variants: [{ label: 'Half', price: 49 }, { label: 'Full', price: 89 }] },
+      { id: 'gb3', category: 'gobi', name: 'Gobi 65', veg: true, variants: [{ label: 'Half', price: 49 }, { label: 'Full', price: 89 }] },
+
+      // Hot Beverages
+      { id: 'hb1', category: 'hot_bev', name: 'Coffee', veg: true, variants: [{ label: 'Cup', price: 20 }] },
+      { id: 'hb2', category: 'hot_bev', name: 'Caramel Coffee', veg: true, variants: [{ label: 'Cup', price: 30 }] },
+      { id: 'hb3', category: 'hot_bev', name: 'Green Tea', veg: true, variants: [{ label: 'Cup', price: 20 }] },
+      { id: 'hb4', category: 'hot_bev', name: 'Black Coffee', veg: true, variants: [{ label: 'Cup', price: 20 }] },
+      { id: 'hb5', category: 'hot_bev', name: 'Boost', veg: true, variants: [{ label: 'Cup', price: 20 }] },
+      { id: 'hb6', category: 'hot_bev', name: 'Horlicks', veg: true, variants: [{ label: 'Cup', price: 20 }] },
+
+      // Cold Beverages
+      { id: 'cbv1', category: 'cold_bev', name: 'Cold Coffee', veg: true, variants: [{ label: 'Glass', price: 79 }] },
+      { id: 'cbv2', category: 'cold_bev', name: 'Chocolate Cold Coffee', veg: true, variants: [{ label: 'Glass', price: 99 }] },
+
+      // Fresh Juices
+      { id: 'fj1', category: 'juices', name: 'Pineapple Juice', veg: true, variants: [{ label: 'Glass', price: 59 }] },
+      { id: 'fj2', category: 'juices', name: 'Watermelon Juice', veg: true, variants: [{ label: 'Glass', price: 59 }] },
+      { id: 'fj3', category: 'juices', name: 'Pomegranate Juice', veg: true, variants: [{ label: 'Glass', price: 69 }] },
+      { id: 'fj4', category: 'juices', name: 'Banana Juice', veg: true, variants: [{ label: 'Glass', price: 69 }] },
+      { id: 'fj5', category: 'juices', name: 'Apple Juice', veg: true, variants: [{ label: 'Glass', price: 69 }] },
+
+      // Mojitos
+      { id: 'mj1', category: 'mojitos', name: 'Mint Mojito', veg: true, variants: [{ label: 'Glass', price: 59 }] },
+      { id: 'mj2', category: 'mojitos', name: 'Pineapple Mojito', veg: true, variants: [{ label: 'Glass', price: 79 }] },
+      { id: 'mj3', category: 'mojitos', name: 'Blue Curacao Mojito', veg: true, variants: [{ label: 'Glass', price: 79 }] },
+      { id: 'mj4', category: 'mojitos', name: 'Strawberry Mojito', veg: true, variants: [{ label: 'Glass', price: 79 }] },
+      { id: 'mj5', category: 'mojitos', name: 'Green Apple Mojito', veg: true, variants: [{ label: 'Glass', price: 79 }] },
+      { id: 'mj6', category: 'mojitos', name: 'Grape Mojito', veg: true, variants: [{ label: 'Glass', price: 79 }] },
+      { id: 'mj7', category: 'mojitos', name: 'Litchi Mojito', veg: true, variants: [{ label: 'Glass', price: 79 }] },
+      { id: 'mj8', category: 'mojitos', name: 'Kiwi Mojito', veg: true, variants: [{ label: 'Glass', price: 79 }] },
+      { id: 'mj9', category: 'mojitos', name: 'Black Currant Mojito', veg: true, variants: [{ label: 'Glass', price: 89 }] },
+      { id: 'mj10', category: 'mojitos', name: 'Blueberry Mojito', veg: true, variants: [{ label: 'Glass', price: 99 }] },
+
+      // Milkshakes
+      { id: 'mk1', category: 'milkshakes', name: 'Vanilla Shake', veg: true, variants: [{ label: 'Glass', price: 69 }] },
+      { id: 'mk2', category: 'milkshakes', name: 'Oreo Shake', veg: true, variants: [{ label: 'Glass', price: 99 }] },
+      { id: 'mk3', category: 'milkshakes', name: 'Dark Fantasy Shake', veg: true, variants: [{ label: 'Glass', price: 99 }] },
+      { id: 'mk4', category: 'milkshakes', name: 'Strawberry Shake', veg: true, variants: [{ label: 'Glass', price: 99 }] },
+      { id: 'mk5', category: 'milkshakes', name: 'Pista Shake', veg: true, variants: [{ label: 'Glass', price: 99 }] },
+      { id: 'mk6', category: 'milkshakes', name: 'Black Currant Shake', veg: true, variants: [{ label: 'Glass', price: 99 }] },
+      { id: 'mk7', category: 'milkshakes', name: 'Chocolate Shake', veg: true, variants: [{ label: 'Glass', price: 99 }] },
+      { id: 'mk8', category: 'milkshakes', name: 'Butterscotch Shake', veg: true, variants: [{ label: 'Glass', price: 119 }] },
+      { id: 'mk9', category: 'milkshakes', name: 'Dates Shake', veg: true, variants: [{ label: 'Glass', price: 119 }] },
+      { id: 'mk10', category: 'milkshakes', name: 'Kit Kat Shake', veg: true, variants: [{ label: 'Glass', price: 129 }] },
+
+      // Ice Cream
+      { id: 'ic1', category: 'ice_cream', name: 'Vanilla Ice Cream', veg: true, variants: [{ label: 'Scoop', price: 40 }] },
+      { id: 'ic2', category: 'ice_cream', name: 'Pista Ice Cream', veg: true, variants: [{ label: 'Scoop', price: 40 }] },
+      { id: 'ic3', category: 'ice_cream', name: 'Strawberry Ice Cream', veg: true, variants: [{ label: 'Scoop', price: 40 }] },
+      { id: 'ic4', category: 'ice_cream', name: 'Butterscotch Ice Cream', veg: true, variants: [{ label: 'Scoop', price: 50 }] },
+      { id: 'ic5', category: 'ice_cream', name: 'Chocolate Ice Cream', veg: true, variants: [{ label: 'Scoop', price: 50 }] }
+    ];
+
+    // =========================================================================
+    // 2. APPLICATION STATE
+    // =========================================================================
+    const state = {
+      view: 'customer', // 'customer' | 'kitchen'
+      selectedCategory: 'all',
+      dietFilter: 'all', // 'all' | 'veg' | 'nonveg'
+      searchQuery: '',
+      table: 'Table 1',
+      cart: [], // [{ key, itemId, name, veg, variantLabel, extraCheese, unitPrice, qty }]
+      orders: [], // Live synced orders from Firestore
+      localOrderIds: new Set(), // Tracks orders placed from this device session
+      kitchenTab: 'active', // 'active' | 'completed'
+      soundEnabled: true,
+      initialLoadComplete: false,
+      knownOrderIds: new Set(),
+      modalItem: null,
+      modalVariantIdx: 0,
+      modalExtraCheese: false,
+      modalQty: 1
+    };
+
+    // Parse URL parameters if opened via Table QR (e.g., ?table=Table%204&view=kitchen)
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.get('table')) {
+      state.table = urlParams.get('table');
+    }
+    if (urlParams.get('view') === 'kitchen') {
+      state.view = 'kitchen';
+    }
+
+    // =========================================================================
+    // 3. FIREBASE INITIALIZATION & REAL-TIME LISTENER
+    // =========================================================================
+    let db = null;
+    let auth = null;
+    let currentUser = null;
+    const appId = typeof __app_id !== 'undefined' ? __app_id : 'cafe-corner-default';
+
+    async function initFirebase() {
+      try {
+        if (typeof __firebase_config === 'undefined') {
+          showToast('Running in offline preview mode (Firebase config missing)', 'warning');
+          return;
+        }
+        const firebaseConfig = JSON.parse(__firebase_config);
+        const app = initializeApp(firebaseConfig);
+        auth = getAuth(app);
+        db = getFirestore(app);
+
+        // RULE 3: Authenticate FIRST before attaching Firestore listeners
+        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+          await signInWithCustomToken(auth, __initial_auth_token);
+        } else {
+          await signInAnonymously(auth);
+        }
+
+        currentUser = auth.currentUser;
+        if (currentUser) {
+          subscribeToLiveOrders();
+        }
+
+        onAuthStateChanged(auth, (user) => {
+          currentUser = user;
+        });
+      } catch (err) {
+        console.error('Firebase initialization error:', err);
+        showToast('Cloud connection issue. Retrying...', 'error');
+      }
+    }
+
+    // Subscribe to public shared orders collection so Customer & Kitchen devices sync in real-time
+    function subscribeToLiveOrders() {
+      if (!db || !currentUser) return;
+
+      // RULE 1: Strict public path for cross-device customer -> kitchen sync
+      const ordersCol = collection(db, 'artifacts', appId, 'public', 'data', 'cafe_corner_orders');
+
+      // RULE 2: Simple collection query without orderBy/where; sort in memory
+      onSnapshot(
+        ordersCol,
+        (snapshot) => {
+          const fetchedOrders = [];
+          let hasBrandNewOrder = false;
+
+          snapshot.forEach((docSnap) => {
+            const data = docSnap.data();
+            fetchedOrders.push({ id: docSnap.id, ...data });
+
+            // Detect newly arrived orders after initial snapshot load
+            if (state.initialLoadComplete && !state.knownOrderIds.has(docSnap.id) && data.status === 'New') {
+              hasBrandNewOrder = true;
+            }
+            state.knownOrderIds.add(docSnap.id);
+          });
+
+          // Sort newest first in JS memory
+          fetchedOrders.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+          state.orders = fetchedOrders;
+
+          if (hasBrandNewOrder) {
+            triggerNewOrderAlert();
+          }
+
+          state.initialLoadComplete = true;
+          updateUI();
+        },
+        (error) => {
+          console.error('Firestore onSnapshot error:', error);
+          showToast('Live sync interrupted. Check connection.', 'error');
+        }
+      );
+    }
+
+    // =========================================================================
+    // 4. AUDIO NOTIFICATION (TONE.JS KITCHEN BELL) & TOASTS
+    // =========================================================================
+    function playKitchenBell() {
+      if (!state.soundEnabled) return;
+      try {
+        if (typeof Tone !== 'undefined') {
+          if (Tone.context.state !== 'running') {
+            Tone.start();
+          }
+          const synth = new Tone.PolySynth(Tone.Synth).toDestination();
+          const now = Tone.now();
+          synth.triggerAttackRelease('E5', '8n', now);
+          synth.triggerAttackRelease('G5', '8n', now + 0.14);
+          synth.triggerAttackRelease('C6', '4n', now + 0.28);
+        }
+      } catch (e) {
+        console.warn('Audio playback blocked until user interaction:', e);
+      }
+    }
+
+    function triggerNewOrderAlert() {
+      playKitchenBell();
+      showToast('🔔 New Customer Order Received!', 'success');
+    }
+
+    function showToast(message, type = 'info') {
+      const container = document.getElementById('toast-container');
+      const toast = document.createElement('div');
+      const colors = {
+        success: 'bg-emerald-900 text-emerald-50 border-emerald-500',
+        error: 'bg-red-900 text-red-50 border-red-500',
+        warning: 'bg-amber-900 text-amber-50 border-amber-500',
+        info: 'bg-cafe-espresso text-amber-100 border-amber-500'
+      };
+      toast.className = `${colors[type] || colors.info} border px-4 py-3 rounded-2xl shadow-xl text-xs font-bold flex items-center justify-between gap-2 transition-all duration-300 transform translate-y-0 opacity-100 pointer-events-auto`;
+      toast.innerHTML = `<span>${message}</span><button class="opacity-70 hover:opacity-100" onclick="this.parentElement.remove()">✕</button>`;
+      container.appendChild(toast);
+      setTimeout(() => {
+        toast.style.opacity = '0';
+        toast.style.transform = 'translateY(-10px)';
+        setTimeout(() => toast.remove(), 300);
+      }, 3800);
+    }
+
+    // =========================================================================
+    // 5. HELPER FUNCTIONS
+    // =========================================================================
+    function renderDietBadge(isVeg) {
+      if (isVeg) {
+        return `<span title="Veg" class="inline-flex w-4 h-4 border-2 border-emerald-600 rounded-xs items-center justify-center shrink-0 bg-white"><span class="w-2 h-2 rounded-full bg-emerald-600"></span></span>`;
+      }
+      return `<span title="Non-Veg" class="inline-flex w-4 h-4 border-2 border-red-600 rounded-xs items-center justify-center shrink-0 bg-white"><span class="w-0 h-0 border-l-[4px] border-l-transparent border-r-[4px] border-r-transparent border-b-[7px] border-b-red-600"></span></span>`;
+    }
+
+    function formatTimeAgo(timestamp) {
+      if (!timestamp) return 'Just now';
+      const diffSec = Math.floor((Date.now() - timestamp) / 1000);
+      if (diffSec < 60) return 'Just now';
+      const diffMin = Math.floor(diffSec / 60);
+      if (diffMin < 60) return `${diffMin}m ago`;
+      const diffHr = Math.floor(diffMin / 60);
+      return `${diffHr}h ${diffMin % 60}m ago`;
+    }
+
+    function getCartItemCount(itemId) {
+      return state.cart
+        .filter((c) => c.itemId === itemId)
+        .reduce((sum, c) => sum + c.qty, 0);
+    }
+
+    // =========================================================================
+    // 6. CART & VARIANT MODAL LOGIC
+    // =========================================================================
+    function handleMenuCardAddClick(itemId) {
+      const item = MENU_ITEMS.find((i) => i.id === itemId);
+      if (!item) return;
+
+      // Open variant/addon modal if multiple variants OR extra cheese option
+      if (item.variants.length > 1 || item.allowExtraCheese) {
+        openVariantModal(item);
+      } else {
+        // Direct single-click add to cart
+        const v = item.variants[0];
+        addToCart({
+          itemId: item.id,
+          name: item.name,
+          veg: item.veg,
+          variantLabel: v.label,
+          extraCheese: false,
+          unitPrice: v.price,
+          qty: 1
+        });
+        showToast(`Added ${item.name} to cart`, 'info');
+      }
+    }
+
+    function openVariantModal(item) {
+      state.modalItem = item;
+      state.modalVariantIdx = 0;
+      state.modalExtraCheese = false;
+      state.modalQty = 1;
+
+      document.getElementById('vm-diet-badge').innerHTML = renderDietBadge(item.veg);
+      const catObj = MENU_CATEGORIES.find((c) => c.id === item.category);
+      document.getElementById('vm-category').textContent = catObj ? catObj.name : '';
+      document.getElementById('vm-title').textContent = item.name;
+
+      // Render variant radio options
+      const variantsContainer = document.getElementById('vm-variants-list');
+      variantsContainer.innerHTML = item.variants
+        .map(
+          (v, idx) => `
+          <label class="flex items-center justify-between p-3 rounded-xl bg-white border-2 ${
+            idx === 0 ? 'border-amber-600 bg-amber-50/40' : 'border-cafe-latte'
+          } cursor-pointer transition vm-variant-option" data-idx="${idx}">
+            <div class="flex items-center gap-2.5">
+              <input type="radio" name="vm-variant" value="${idx}" ${idx === 0 ? 'checked' : ''} class="w-4 h-4 accent-amber-600" />
+              <span class="text-sm font-bold text-cafe-espresso">${v.label}</span>
+            </div>
+            <span class="text-sm font-extrabold text-cafe-espresso">₹${v.price}</span>
+          </label>
+        `
+        )
+        .join('');
+
+      // Bind radio change
+      variantsContainer.querySelectorAll('input[name="vm-variant"]').forEach((radio) => {
+        radio.addEventListener('change', (e) => {
+          state.modalVariantIdx = parseInt(e.target.value, 10);
+          variantsContainer.querySelectorAll('.vm-variant-option').forEach((lbl, i) => {
+            if (i === state.modalVariantIdx) {
+              lbl.classList.add('border-amber-600', 'bg-amber-50/40');
+              lbl.classList.remove('border-cafe-latte');
+            } else {
+              lbl.classList.remove('border-amber-600', 'bg-amber-50/40');
+              lbl.classList.add('border-cafe-latte');
+            }
+          });
+          updateVariantModalPrice();
+        });
+      });
+
+      // Extra cheese toggle
+      const addonSec = document.getElementById('vm-addon-section');
+      const cheeseCheckbox = document.getElementById('vm-extra-cheese');
+      cheeseCheckbox.checked = false;
+      if (item.allowExtraCheese) {
+        addonSec.classList.remove('hidden');
+      } else {
+        addonSec.classList.add('hidden');
+      }
+
+      document.getElementById('vm-qty-val').textContent = '1';
+      updateVariantModalPrice();
+      document.getElementById('variant-modal').classList.remove('hidden');
+    }
+
+    function updateVariantModalPrice() {
+      if (!state.modalItem) return;
+      const base = state.modalItem.variants[state.modalVariantIdx].price;
+      const cheese = state.modalExtraCheese ? 29 : 0;
+      const total = (base + cheese) * state.modalQty;
+      document.getElementById('btn-vm-confirm').textContent = `Add to Cart • ₹${total}`;
+    }
+
+    function addToCart({ itemId, name, veg, variantLabel, extraCheese, unitPrice, qty }) {
+      const key = `${itemId}__${variantLabel}__${extraCheese ? 'cheese' : 'plain'}`;
+      const existing = state.cart.find((c) => c.key === key);
+      if (existing) {
+        existing.qty += qty;
+      } else {
+        state.cart.push({
+          key,
+          itemId,
+          name,
+          veg,
+          variantLabel,
+          extraCheese,
+          unitPrice,
+          qty
+        });
+      }
+      renderMenu();
+      renderCart();
+    }
+
+    function updateCartQtyByKey(key, delta) {
+      const idx = state.cart.findIndex((c) => c.key === key);
+      if (idx === -1) return;
+      state.cart[idx].qty += delta;
+      if (state.cart[idx].qty <= 0) {
+        state.cart.splice(idx, 1);
+      }
+      renderMenu();
+      renderCart();
+    }
+
+    function decrementLastVariantOfItem(itemId) {
+      // Find last matching cart entry for this itemId
+      for (let i = state.cart.length - 1; i >= 0; i--) {
+        if (state.cart[i].itemId === itemId) {
+          updateCartQtyByKey(state.cart[i].key, -1);
+          break;
+        }
+      }
+    }
+
+    // =========================================================================
+    // 7. PLACE ORDER & KITCHEN STATUS UPDATES (FIRESTORE)
+    // =========================================================================
+    async function placeOrderToFirebase() {
+      if (state.cart.length === 0) return;
+
+      if (!db || !currentUser) {
+        showToast('Connecting to kitchen server... please tap again in a second.', 'warning');
+        return;
+      }
+
+      const btn = document.getElementById('btn-place-order');
+      btn.disabled = true;
+      btn.classList.add('opacity-60');
+
+      try {
+        const tableVal = document.getElementById('checkout-table').value;
+        const customerName = document.getElementById('checkout-name').value.trim();
+        const notes = document.getElementById('checkout-notes').value.trim();
+        const totalAmount = state.cart.reduce((sum, item) => sum + item.unitPrice * item.qty, 0);
+        const orderNumber = 'CC-' + Math.floor(1000 + Math.random() * 9000);
+
+        const orderPayload = {
+          orderNumber,
+          table: tableVal,
+          customerName: customerName || 'Guest',
+          notes,
+          items: state.cart.map((c) => ({
+            name: c.name,
+            veg: c.veg,
+            variant: c.variantLabel,
+            extraCheese: c.extraCheese,
+            unitPrice: c.unitPrice,
+            qty: c.qty
+          })),
+          totalAmount,
+          status: 'New', // 'New' -> 'Preparing' -> 'Ready' -> 'Served'
+          createdAt: Date.now(),
+          createdByUid: currentUser.uid
+        };
+
+        // RULE 1: Strict public path
+        const ordersCol = collection(db, 'artifacts', appId, 'public', 'data', 'cafe_corner_orders');
+        const docRef = await addDoc(ordersCol, orderPayload);
+
+        state.localOrderIds.add(docRef.id);
+        state.knownOrderIds.add(docRef.id);
+        state.cart = [];
+        document.getElementById('checkout-notes').value = '';
+        document.getElementById('cart-modal').classList.add('hidden');
+
+        renderMenu();
+        renderCart();
+        showToast(`✅ Order ${orderNumber} sent to Café Corner Kitchen!`, 'success');
+      } catch (err) {
+        console.error('Error placing order:', err);
+        showToast('Failed to send order. Please try again.', 'error');
+      } finally {
+        btn.disabled = false;
+        btn.classList.remove('opacity-60');
+      }
+    }
+
+    async function updateOrderStatus(orderId, nextStatus) {
+      if (!db || !currentUser) return;
+      try {
+        const orderDoc = doc(db, 'artifacts', appId, 'public', 'data', 'cafe_corner_orders', orderId);
+        await updateDoc(orderDoc, {
+          status: nextStatus,
+          updatedAt: Date.now()
+        });
+        showToast(`Order marked as ${nextStatus}`, 'success');
+      } catch (err) {
+        console.error('Failed to update status:', err);
+        showToast('Could not update order status.', 'error');
+      }
+    }
+
+    // =========================================================================
+    // 8. RENDERING FUNCTIONS
+    // =========================================================================
+    function renderCategoryPills() {
+      const container = document.getElementById('category-pills');
+      container.innerHTML = MENU_CATEGORIES.map((cat) => {
+        const isActive = state.selectedCategory === cat.id;
+        return `
+          <button data-cat="${cat.id}" class="cat-pill shrink-0 px-3.5 py-1.5 rounded-full text-xs font-bold transition flex items-center gap-1.5 border ${
+            isActive
+              ? 'bg-cafe-espresso text-amber-300 border-cafe-espresso shadow-xs'
+              : 'bg-white text-cafe-roast border-cafe-latte hover:border-amber-500'
+          }">
+            <span>${cat.icon}</span>
+            <span>${cat.name}</span>
+          </button>
+        `;
+      }).join('');
+
+      container.querySelectorAll('.cat-pill').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          state.selectedCategory = btn.dataset.cat;
+          renderCategoryPills();
+          renderMenu();
+        });
+      });
+    }
+
+    function renderMenu() {
+      const container = document.getElementById('menu-container');
+      const emptyState = document.getElementById('empty-search-state');
+      const query = state.searchQuery.trim().toLowerCase();
+
+      // Filter items
+      const filtered = MENU_ITEMS.filter((item) => {
+        if (state.selectedCategory !== 'all' && item.category !== state.selectedCategory) return false;
+        if (state.dietFilter === 'veg' && !item.veg) return false;
+        if (state.dietFilter === 'nonveg' && item.veg) return false;
+        if (query && !item.name.toLowerCase().includes(query)) return false;
+        return true;
+      });
+
+      if (filtered.length === 0) {
+        container.innerHTML = '';
+        emptyState.classList.remove('hidden');
+        return;
+      }
+      emptyState.classList.add('hidden');
+
+      // Group filtered items by category preserving MENU_CATEGORIES order
+      const categoriesToShow = MENU_CATEGORIES.filter((c) => c.id !== 'all');
+      let html = '';
+
+      categoriesToShow.forEach((cat) => {
+        const catItems = filtered.filter((i) => i.category === cat.id);
+        if (catItems.length === 0) return;
+
+        // Check if category has Extra Cheese note
+        const hasCheeseNote = ['pizzas', 'burgers', 'sandwich'].includes(cat.id);
+
+        html += `
+          <section class="space-y-3">
+            <div class="flex items-center justify-between border-b-2 border-cafe-latte pb-1.5">
+              <h2 class="font-serif font-bold text-lg sm:text-xl text-cafe-espresso flex items-center gap-2">
+                <span>${cat.icon}</span>
+                <span>${cat.name}</span>
+              </h2>
+              ${
+                hasCheeseNote
+                  ? `<span class="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-900 border border-amber-300">+ Extra Cheese ₹29</span>`
+                  : `<span class="text-xs text-cafe-roast/60 font-medium">${catItems.length} items</span>`
+              }
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              ${catItems
+                .map((item) => {
+                  const inCartCount = getCartItemCount(item.id);
+                  const priceDisplay =
+                    item.variants.length === 1
+                      ? `₹${item.variants[0].price}`
+                      : item.variants.map((v) => `${v.label.split(' ')[0]} ₹${v.price}`).join('  |  ');
+
+                  const hasOptions = item.variants.length > 1 || item.allowExtraCheese;
+
+                  return `
+                    <div class="bg-white rounded-2xl p-3.5 border border-cafe-latte/90 shadow-xs hover:border-amber-500/70 transition flex items-center justify-between gap-3">
+                      <div class="min-w-0 flex-1">
+                        <div class="flex items-center gap-2">
+                          ${renderDietBadge(item.veg)}
+                          <h3 class="font-bold text-sm sm:text-base text-cafe-espresso leading-snug truncate">${item.name}</h3>
+                        </div>
+                        <p class="text-xs sm:text-sm font-extrabold text-amber-800 mt-1.5">${priceDisplay}</p>
+                        ${
+                          hasOptions
+                            ? `<p class="text-[11px] text-cafe-roast/65 mt-0.5">${
+                                item.variants.length > 1 ? 'Multiple sizes available' : ''
+                              }${item.variants.length > 1 && item.allowExtraCheese ? ' • ' : ''}${
+                                item.allowExtraCheese ? 'Extra cheese option' : ''
+                              }</p>`
+                            : ''
+                        }
+                      </div>
+
+                      <div class="shrink-0">
+                        ${
+                          inCartCount === 0
+                            ? `<button data-add-id="${item.id}" class="btn-card-add px-4 py-2 rounded-xl bg-cafe-parchment hover:bg-amber-500 text-cafe-espresso font-extrabold text-xs border border-amber-600/30 shadow-xs transition active:scale-95">
+                                + ADD
+                              </button>`
+                            : `<div class="inline-flex items-center bg-cafe-espresso text-white rounded-xl overflow-hidden shadow">
+                                <button data-dec-id="${item.id}" class="btn-card-dec px-2.5 py-1.5 text-sm font-extrabold text-amber-300 hover:bg-cafe-roast">−</button>
+                                <span class="px-2 text-xs font-extrabold">${inCartCount}</span>
+                                <button data-add-id="${item.id}" class="btn-card-add px-2.5 py-1.5 text-sm font-extrabold text-amber-300 hover:bg-cafe-roast">+</button>
+                              </div>`
+                        }
+                      </div>
+                    </div>
+                  `;
+                })
+                .join('')}
+            </div>
+          </section>
+        `;
+      });
+
+      container.innerHTML = html;
+
+      // Bind card add/dec events
+      container.querySelectorAll('.btn-card-add').forEach((btn) => {
+        btn.addEventListener('click', () => handleMenuCardAddClick(btn.dataset.addId));
+      });
+      container.querySelectorAll('.btn-card-dec').forEach((btn) => {
+        btn.addEventListener('click', () => decrementLastVariantOfItem(btn.dataset.decId));
+      });
+    }
+
+    function renderCart() {
+      const totalItems = state.cart.reduce((sum, c) => sum + c.qty, 0);
+      const totalPrice = state.cart.reduce((sum, c) => sum + c.unitPrice * c.qty, 0);
+
+      const bar = document.getElementById('floating-cart-bar');
+      if (totalItems > 0 && state.view === 'customer') {
+        bar.classList.remove('hidden');
+        document.getElementById('cart-bar-count').textContent = `${totalItems} ITEM${totalItems > 1 ? 'S' : ''}`;
+        document.getElementById('cart-bar-table').textContent = state.table;
+        document.getElementById('cart-bar-total').textContent = `₹${totalPrice}`;
+      } else {
+        bar.classList.add('hidden');
+      }
+
+      // Render inside Cart Modal
+      const listEl = document.getElementById('cart-items-list');
+      if (state.cart.length === 0) {
+        listEl.innerHTML = `<div class="text-center py-8 text-sm text-cafe-roast/70">Your cart is empty. Add delicious items from the menu!</div>`;
+      } else {
+        listEl.innerHTML = state.cart
+          .map(
+            (c) => `
+            <div class="bg-white rounded-2xl p-3 border border-cafe-latte flex items-center justify-between gap-2">
+              <div class="min-w-0 flex-1">
+                <div class="flex items-center gap-1.5">
+                  ${renderDietBadge(c.veg)}
+                  <span class="font-bold text-sm text-cafe-espresso truncate">${c.name}</span>
+                </div>
+                <div class="text-xs text-cafe-roast/80 mt-0.5">
+                  ${c.variantLabel}${c.extraCheese ? ' + 🧀 Extra Cheese' : ''} • ₹${c.unitPrice} each
+                </div>
+              </div>
+              <div class="flex items-center gap-2.5 shrink-0">
+                <div class="inline-flex items-center bg-cafe-parchment rounded-xl border border-cafe-latte">
+                  <button data-key="${c.key}" class="cart-dec w-7 h-7 font-extrabold text-cafe-espresso">−</button>
+                  <span class="w-6 text-center text-xs font-extrabold">${c.qty}</span>
+                  <button data-key="${c.key}" class="cart-inc w-7 h-7 font-extrabold text-cafe-espresso">+</button>
+                </div>
+                <span class="font-extrabold text-sm text-cafe-espresso w-12 text-right">₹${c.unitPrice * c.qty}</span>
+              </div>
+            </div>
+          `
+          )
+          .join('');
+
+        listEl.querySelectorAll('.cart-dec').forEach((b) =>
+          b.addEventListener('click', () => updateCartQtyByKey(b.dataset.key, -1))
+        );
+        listEl.querySelectorAll('.cart-inc').forEach((b) =>
+          b.addEventListener('click', () => updateCartQtyByKey(b.dataset.key, 1))
+        );
+      }
+
+      document.getElementById('bill-subtotal').textContent = `₹${totalPrice}`;
+      document.getElementById('bill-grand-total').textContent = `₹${totalPrice}`;
+      document.getElementById('btn-place-order-total').textContent = `₹${totalPrice}`;
+    }
+
+    function renderCustomerLiveOrders() {
+      const section = document.getElementById('customer-active-orders-section');
+      const list = document.getElementById('customer-orders-list');
+
+      // Show orders placed by this user OR active orders for the currently selected table
+      const relevantOrders = state.orders.filter(
+        (o) =>
+          o.status !== 'Served' &&
+          (state.localOrderIds.has(o.id) ||
+            (currentUser && o.createdByUid === currentUser.uid) ||
+            o.table === state.table)
+      );
+
+      if (relevantOrders.length === 0) {
+        section.classList.add('hidden');
+        return;
+      }
+
+      section.classList.remove('hidden');
+      const steps = ['New', 'Preparing', 'Ready', 'Served'];
+
+      list.innerHTML = relevantOrders
+        .map((order) => {
+          const currentIdx = steps.indexOf(order.status);
+          const statusBadgeColors = {
+            New: 'bg-amber-200 text-amber-950',
+            Preparing: 'bg-blue-100 text-blue-900',
+            Ready: 'bg-emerald-200 text-emerald-950 animate-pulse',
+            Served: 'bg-gray-200 text-gray-800'
+          };
+
+          return `
+            <div class="bg-white rounded-xl p-3 border border-amber-300/80 shadow-2xs">
+              <div class="flex items-center justify-between gap-2">
+                <div>
+                  <span class="font-extrabold text-xs text-cafe-espresso">${order.orderNumber}</span>
+                  <span class="text-xs text-cafe-roast ml-1">• ${order.table} • ₹${order.totalAmount}</span>
+                </div>
+                <span class="px-2.5 py-0.5 rounded-full text-[11px] font-extrabold ${statusBadgeColors[order.status] || ''}">
+                  ${order.status === 'Ready' ? '🔔 Ready to Serve!' : order.status}
+                </span>
+              </div>
+              <!-- Progress Bar -->
+              <div class="grid grid-cols-4 gap-1.5 mt-2.5">
+                ${steps
+                  .map(
+                    (st, i) => `
+                    <div class="text-center">
+                      <div class="h-1.5 rounded-full ${i <= currentIdx ? 'bg-amber-600' : 'bg-cafe-parchment'}"></div>
+                      <span class="text-[10px] font-bold ${i <= currentIdx ? 'text-cafe-espresso' : 'text-cafe-roast/40'}">${st}</span>
+                    </div>
+                  `
+                  )
+                  .join('')}
+              </div>
+            </div>
+          `;
+        })
+        .join('');
+    }
+
+    function renderKitchenBoard() {
+      const activeOrders = state.orders.filter((o) => o.status !== 'Served');
+      const completedOrders = state.orders.filter((o) => o.status === 'Served');
+
+      // Update header badge
+      const badge = document.getElementById('kitchen-badge');
+      if (activeOrders.length > 0) {
+        badge.textContent = activeOrders.length;
+        badge.classList.remove('hidden');
+      } else {
+        badge.classList.add('hidden');
+      }
+
+      document.getElementById('count-active').textContent = activeOrders.length;
+      document.getElementById('count-completed').textContent = completedOrders.length;
+      document.getElementById('stat-total-orders').textContent = state.orders.length;
+
+      const totalRevenue = state.orders.reduce((sum, o) => sum + (o.totalAmount || 0), 0);
+      document.getElementById('stat-total-revenue').textContent = `₹${totalRevenue}`;
+
+      const ordersToRender = state.kitchenTab === 'active' ? activeOrders : completedOrders;
+      const grid = document.getElementById('kitchen-orders-grid');
+      const emptyState = document.getElementById('kitchen-empty-state');
+
+      if (ordersToRender.length === 0) {
+        grid.innerHTML = '';
+        emptyState.classList.remove('hidden');
+        return;
+      }
+      emptyState.classList.add('hidden');
+
+      grid.innerHTML = ordersToRender
+        .map((order) => {
+          const isNew = order.status === 'New';
+          const isPreparing = order.status === 'Preparing';
+          const isReady = order.status === 'Ready';
+
+          let statusPill = '';
+          let actionBtn = '';
+
+          if (isNew) {
+            statusPill = `<span class="px-2.5 py-1 rounded-full text-xs font-extrabold bg-amber-500 text-cafe-espresso">🆕 NEW ORDER</span>`;
+            actionBtn = `<button data-id="${order.id}" data-next="Preparing" class="btn-status-next w-full py-3 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-extrabold text-sm shadow transition">👨‍🍳 Accept & Start Preparing</button>`;
+          } else if (isPreparing) {
+            statusPill = `<span class="px-2.5 py-1 rounded-full text-xs font-extrabold bg-blue-100 text-blue-900">🔥 PREPARING</span>`;
+            actionBtn = `<button data-id="${order.id}" data-next="Ready" class="btn-status-next w-full py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-sm shadow transition">✅ Mark Order Ready</button>`;
+          } else if (isReady) {
+            statusPill = `<span class="px-2.5 py-1 rounded-full text-xs font-extrabold bg-emerald-200 text-emerald-950">🔔 READY TO SERVE</span>`;
+            actionBtn = `<button data-id="${order.id}" data-next="Served" class="btn-status-next w-full py-3 rounded-xl bg-cafe-espresso hover:bg-cafe-roast text-amber-300 font-extrabold text-sm shadow transition">🍽️ Complete / Served</button>`;
+          } else {
+            statusPill = `<span class="px-2.5 py-1 rounded-full text-xs font-bold bg-gray-200 text-gray-700">✓ SERVED</span>`;
+          }
+
+          return `
+            <div class="bg-white rounded-2xl p-4 border-2 ${
+              isNew ? 'border-amber-500 new-order-pulse' : 'border-cafe-latte'
+            } shadow-sm flex flex-col justify-between gap-3">
+              <div>
+                <!-- Top Order Meta -->
+                <div class="flex items-start justify-between gap-2 pb-2.5 border-b border-cafe-parchment">
+                  <div>
+                    <div class="flex items-center gap-2">
+                      <span class="px-2.5 py-0.5 rounded-lg bg-cafe-espresso text-amber-300 font-extrabold text-sm">${order.table}</span>
+                      <span class="font-extrabold text-sm text-cafe-espresso">${order.orderNumber}</span>
+                    </div>
+                    <p class="text-xs text-cafe-roast mt-1">
+                      👤 <strong>${order.customerName || 'Guest'}</strong> • ⏱️ ${formatTimeAgo(order.createdAt)}
+                    </p>
+                  </div>
+                  ${statusPill}
+                </div>
+
+                <!-- Special Cooking Notes -->
+                ${
+                  order.notes
+                    ? `<div class="mt-2.5 px-3 py-2 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-950">
+                        <strong>Note:</strong> ${order.notes}
+                      </div>`
+                    : ''
+                }
+
+                <!-- Itemized Dishes -->
+                <ul class="mt-3 space-y-2">
+                  ${(order.items || [])
+                    .map(
+                      (item) => `
+                      <li class="flex items-start justify-between text-sm bg-cafe-cream/60 px-2.5 py-1.5 rounded-xl">
+                        <div class="flex items-start gap-2">
+                          <span class="font-extrabold text-amber-900 bg-amber-200/70 px-1.5 py-0.5 rounded text-xs">${item.qty}×</span>
+                          <div>
+                            <div class="font-bold text-cafe-espresso flex items-center gap-1.5">
+                              ${renderDietBadge(item.veg)}
+                              <span>${item.name}</span>
+                            </div>
+                            <div class="text-[11px] text-cafe-roast">
+                              ${item.variant}${item.extraCheese ? ' + 🧀 Extra Cheese' : ''}
+                            </div>
+                          </div>
+                        </div>
+                        <span class="font-bold text-cafe-espresso text-xs">₹${item.unitPrice * item.qty}</span>
+                      </li>
+                    `
+                    )
+                    .join('')}
+                </ul>
+              </div>
+
+              <!-- Footer Total & Action -->
+              <div class="pt-2.5 border-t border-cafe-parchment space-y-2.5">
+                <div class="flex items-center justify-between text-sm">
+                  <span class="text-cafe-roast font-semibold">Order Total</span>
+                  <span class="font-extrabold text-base text-cafe-espresso">₹${order.totalAmount}</span>
+                </div>
+                ${actionBtn}
+              </div>
+            </div>
+          `;
+        })
+        .join('');
+
+      grid.querySelectorAll('.btn-status-next').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          updateOrderStatus(btn.dataset.id, btn.dataset.next);
+        });
+      });
+    }
+
+    function switchView(targetView) {
+      state.view = targetView;
+      const custView = document.getElementById('view-customer');
+      const kitchView = document.getElementById('view-kitchen');
+      const tabCust = document.getElementById('tab-customer');
+      const tabKitch = document.getElementById('tab-kitchen');
+      const tableSel = document.getElementById('header-table-selector');
+
+      if (targetView === 'customer') {
+        custView.classList.remove('hidden');
+        kitchView.classList.add('hidden');
+        tableSel.classList.remove('hidden');
+
+        tabCust.className = 'flex-1 sm:flex-initial px-3.5 py-1.5 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 bg-amber-500 text-cafe-espresso shadow';
+        tabKitch.className = 'flex-1 sm:flex-initial px-3.5 py-1.5 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 text-amber-100 hover:text-white';
+      } else {
+        custView.classList.add('hidden');
+        kitchView.classList.remove('hidden');
+        tableSel.classList.add('hidden');
+
+        tabKitch.className = 'flex-1 sm:flex-initial px-3.5 py-1.5 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 bg-amber-500 text-cafe-espresso shadow';
+        tabCust.className = 'flex-1 sm:flex-initial px-3.5 py-1.5 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 text-amber-100 hover:text-white';
+      }
+      renderCart();
+      renderKitchenBoard();
+    }
+
+    function generateTableQR(tableName) {
+      const qrBox = document.getElementById('qrcode-box');
+      qrBox.innerHTML = '';
+      document.getElementById('qr-table-badge').textContent = tableName.toUpperCase();
+
+      const baseUrl = window.location.href.split('?')[0];
+      const qrUrl = `${baseUrl}?table=${encodeURIComponent(tableName)}`;
+
+      if (typeof QRCode !== 'undefined') {
+        new QRCode(qrBox, {
+          text: qrUrl,
+          width: 170,
+          height: 170,
+          colorDark: '#2C1A11',
+          colorLight: '#FFFFFF',
+          correctLevel: QRCode.CorrectLevel.M
+        });
+      } else {
+        qrBox.innerHTML = `<div class="p-4 text-xs font-mono break-all">${qrUrl}</div>`;
+      }
+    }
+
+    function updateUI() {
+      renderCustomerLiveOrders();
+      renderKitchenBoard();
+      renderCart();
+    }
+
+    // =========================================================================
+    // 9. EVENT LISTENERS & INITIALIZATION
+    // =========================================================================
+    window.addEventListener('DOMContentLoaded', () => {
+      // Sync table selectors
+      const headerTableSelect = document.getElementById('table-select');
+      const checkoutTableSelect = document.getElementById('checkout-table');
+      headerTableSelect.value = state.table;
+      checkoutTableSelect.value = state.table;
+
+      headerTableSelect.addEventListener('change', (e) => {
+        state.table = e.target.value;
+        checkoutTableSelect.value = state.table;
+        renderCart();
+        renderCustomerLiveOrders();
+      });
+
+      checkoutTableSelect.addEventListener('change', (e) => {
+        state.table = e.target.value;
+        headerTableSelect.value = state.table;
+        renderCart();
+        renderCustomerLiveOrders();
+      });
+
+      // Role Switcher Tabs
+      document.getElementById('tab-customer').addEventListener('click', () => switchView('customer'));
+      document.getElementById('tab-kitchen').addEventListener('click', () => {
+        // Unlock audio context on user tap
+        if (typeof Tone !== 'undefined' && Tone.context.state !== 'running') {
+          Tone.start();
+        }
+        switchView('kitchen');
+      });
+
+      // Search & Diet Filters
+      const searchInput = document.getElementById('menu-search');
+      const clearSearchBtn = document.getElementById('clear-search');
+      searchInput.addEventListener('input', (e) => {
+        state.searchQuery = e.target.value;
+        clearSearchBtn.classList.toggle('hidden', !state.searchQuery);
+        renderMenu();
+      });
+      clearSearchBtn.addEventListener('click', () => {
+        state.searchQuery = '';
+        searchInput.value = '';
+        clearSearchBtn.classList.add('hidden');
+        renderMenu();
+      });
+
+      document.querySelectorAll('.diet-btn').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          state.dietFilter = btn.dataset.diet;
+          document.querySelectorAll('.diet-btn').forEach((b) => {
+            b.classList.remove('bg-cafe-espresso', 'text-white');
+          });
+          btn.classList.add('bg-cafe-espresso', 'text-white');
+          renderMenu();
+        });
+      });
+
+      document.getElementById('btn-reset-filters').addEventListener('click', () => {
+        state.selectedCategory = 'all';
+        state.dietFilter = 'all';
+        state.searchQuery = '';
+        searchInput.value = '';
+        clearSearchBtn.classList.add('hidden');
+        document.querySelectorAll('.diet-btn').forEach((b) => {
+          b.classList.toggle('bg-cafe-espresso', b.dataset.diet === 'all');
+          b.classList.toggle('text-white', b.dataset.diet === 'all');
+        });
+        renderCategoryPills();
+        renderMenu();
+      });
+
+      // Variant Modal Listeners
+      document.getElementById('btn-close-vm').addEventListener('click', () => {
+        document.getElementById('variant-modal').classList.add('hidden');
+      });
+      document.getElementById('vm-extra-cheese').addEventListener('change', (e) => {
+        state.modalExtraCheese = e.target.checked;
+        updateVariantModalPrice();
+      });
+      document.getElementById('vm-qty-minus').addEventListener('click', () => {
+        if (state.modalQty > 1) {
+          state.modalQty--;
+          document.getElementById('vm-qty-val').textContent = state.modalQty;
+          updateVariantModalPrice();
+        }
+      });
+      document.getElementById('vm-qty-plus').addEventListener('click', () => {
+        state.modalQty++;
+        document.getElementById('vm-qty-val').textContent = state.modalQty;
+        updateVariantModalPrice();
+      });
+      document.getElementById('btn-vm-confirm').addEventListener('click', () => {
+        if (!state.modalItem) return;
+        const v = state.modalItem.variants[state.modalVariantIdx];
+        const unitPrice = v.price + (state.modalExtraCheese ? 29 : 0);
+        addToCart({
+          itemId: state.modalItem.id,
+          name: state.modalItem.name,
+          veg: state.modalItem.veg,
+          variantLabel: v.label,
+          extraCheese: state.modalExtraCheese,
+          unitPrice,
+          qty: state.modalQty
+        });
+        document.getElementById('variant-modal').classList.add('hidden');
+        showToast(`Added ${state.modalQty}× ${state.modalItem.name} to cart`, 'info');
+      });
+
+      // Cart Drawer Listeners
+      document.getElementById('btn-open-cart').addEventListener('click', () => {
+        renderCart();
+        document.getElementById('cart-modal').classList.remove('hidden');
+      });
+      document.getElementById('btn-close-cart').addEventListener('click', () => {
+        document.getElementById('cart-modal').classList.add('hidden');
+      });
+      document.getElementById('btn-clear-cart').addEventListener('click', () => {
+        state.cart = [];
+        renderMenu();
+        renderCart();
+        document.getElementById('cart-modal').classList.add('hidden');
+      });
+      document.getElementById('btn-place-order').addEventListener('click', placeOrderToFirebase);
+
+      // Kitchen Board Controls
+      const kActiveBtn = document.getElementById('kitchen-filter-active');
+      const kCompBtn = document.getElementById('kitchen-filter-completed');
+      kActiveBtn.addEventListener('click', () => {
+        state.kitchenTab = 'active';
+        kActiveBtn.className = 'px-4 py-1.5 rounded-lg text-xs font-bold bg-cafe-espresso text-white shadow transition';
+        kCompBtn.className = 'px-4 py-1.5 rounded-lg text-xs font-bold text-cafe-roast hover:text-cafe-espresso transition';
+        renderKitchenBoard();
+      });
+      kCompBtn.addEventListener('click', () => {
+        state.kitchenTab = 'completed';
+        kCompBtn.className = 'px-4 py-1.5 rounded-lg text-xs font-bold bg-cafe-espresso text-white shadow transition';
+        kActiveBtn.className = 'px-4 py-1.5 rounded-lg text-xs font-bold text-cafe-roast hover:text-cafe-espresso transition';
+        renderKitchenBoard();
+      });
+
+      document.getElementById('btn-toggle-sound').addEventListener('click', () => {
+        state.soundEnabled = !state.soundEnabled;
+        document.getElementById('sound-icon').textContent = state.soundEnabled ? '🔔' : '🔕';
+        document.getElementById('sound-label').textContent = state.soundEnabled ? 'Alert Sound: ON' : 'Alert Sound: OFF';
+        if (state.soundEnabled) playKitchenBell();
+      });
+
+      document.getElementById('btn-test-bell').addEventListener('click', () => {
+        playKitchenBell();
+        showToast('🔔 Kitchen alert bell tested!', 'info');
+      });
+
+      // QR Modal Controls
+      const qrModal = document.getElementById('qr-modal');
+      const qrTableSelect = document.getElementById('qr-table-select');
+      document.getElementById('btn-open-qr').addEventListener('click', () => {
+        qrTableSelect.value = state.table;
+        generateTableQR(state.table);
+        qrModal.classList.remove('hidden');
+      });
+      document.getElementById('btn-close-qr').addEventListener('click', () => {
+        qrModal.classList.add('hidden');
+      });
+      qrTableSelect.addEventListener('change', (e) => {
+        generateTableQR(e.target.value);
+      });
+      document.getElementById('btn-copy-link').addEventListener('click', () => {
+        const baseUrl = window.location.href.split('?')[0];
+        const shareUrl = `${baseUrl}?table=${encodeURIComponent(qrTableSelect.value)}`;
+        const tempInput = document.createElement('input');
+        tempInput.value = shareUrl;
+        document.body.appendChild(tempInput);
+        tempInput.select();
+        document.execCommand('copy');
+        document.body.removeChild(tempInput);
+        showToast(`📋 Copied link for ${qrTableSelect.value}!`, 'success');
+      });
+
+      // Initial Render
+      renderCategoryPills();
+      renderMenu();
+      renderCart();
+      switchView(state.view);
+
+      // Periodic relative timestamp refresh
+      setInterval(() => {
+        if (state.view === 'kitchen') renderKitchenBoard();
+      }, 30000);
+
+      // Initialize Cloud Sync
+      initFirebase();
+    });
+  </script>
+</body>
+</html>
